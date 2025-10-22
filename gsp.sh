@@ -35,10 +35,11 @@ RANDOM_BG_COLOR=${BG_COLORS[$RANDOM % ${#BG_COLORS[@]}]}
 
 echo "${RANDOM_BG_COLOR}${RANDOM_TEXT_COLOR}${BOLD}Starting Execution${RESET}"
 
-# Step 1: Set Compute Zone
-echo "${BOLD}${BLUE}Setting Compute Zone${RESET}"
-export ZONE=$(gcloud compute project-info describe \
---format="value(commonInstanceMetadata.items[google-compute-default-zone])")
+# Step 1: Set Compute Region and Zone explicitly as per lab instructions
+echo "${BOLD}${BLUE}Setting Compute Region and Zone${RESET}"
+gcloud config set compute/region us-east4
+export REGION=us-east4
+export ZONE=us-east4-c
 
 # Step 2: Get Project ID
 echo "${BOLD}${MAGENTA}Fetching Project ID${RESET}"
@@ -49,10 +50,10 @@ echo "${BOLD}${GREEN}Retrieving Project Number${RESET}"
 export PROJECT_NUMBER=$(gcloud projects describe ${PROJECT_ID} \
     --format="value(projectNumber)")
 
-# Step 4: Create VM Instance `gcelab`
+# Step 4: Create VM Instance `gcelab` with Debian 12 (bookworm), balanced disk 10GB
 echo "${BOLD}${YELLOW}Creating VM Instance 'gcelab'${RESET}"
 gcloud compute instances create gcelab \
-    --project=$DEVSHELL_PROJECT_ID \
+    --project=$PROJECT_ID \
     --zone=$ZONE \
     --machine-type=e2-medium \
     --network-interface=network-tier=PREMIUM,stack-type=IPV4_ONLY,subnet=default \
@@ -62,24 +63,20 @@ gcloud compute instances create gcelab \
     --service-account=$PROJECT_NUMBER-compute@developer.gserviceaccount.com \
     --scopes=https://www.googleapis.com/auth/devstorage.read_only,https://www.googleapis.com/auth/logging.write,https://www.googleapis.com/auth/monitoring.write,https://www.googleapis.com/auth/service.management.readonly,https://www.googleapis.com/auth/servicecontrol,https://www.googleapis.com/auth/trace.append \
     --tags=http-server \
-    --create-disk=auto-delete=yes,boot=yes,device-name=gcelab,image=projects/debian-cloud/global/images/debian-12-bookworm-v20241009,mode=rw,size=10,type=pd-balanced \
+    --create-disk=auto-delete=yes,boot=yes,device-name=gcelab,image=projects/debian-cloud/global/images/debian-12-bookworm-v20231010,mode=rw,size=10,type=pd-balanced \
     --no-shielded-secure-boot \
     --shielded-vtpm \
     --shielded-integrity-monitoring \
     --labels=goog-ec-src=vm_add-gcloud \
     --reservation-affinity=any
 
-# Step 5: Create second instance `gcelab2`
-echo "${BOLD}${RED}Creating second VM 'gcelab2'${RESET}"
-gcloud compute instances create gcelab2 --machine-type e2-medium --zone=$ZONE
-
-# Step 6: Install and verify nginx on gcelab
+# Step 5: Install and verify nginx on gcelab
 echo "${BOLD}${CYAN}Installing NGINX and verifying process${RESET}"
-gcloud compute ssh --zone "$ZONE" "gcelab" --project "$DEVSHELL_PROJECT_ID" --quiet --command "sudo apt-get update && sudo apt-get install -y nginx && ps auwx | grep nginx "
+gcloud compute ssh --zone "$ZONE" "gcelab" --project "$PROJECT_ID" --quiet --command "sudo apt-get update && sudo apt-get install -y nginx && ps auwx | grep nginx"
 
-# Step 7: Create firewall rule for HTTP access
+# Step 6: Create firewall rule for HTTP access (allow port 80 traffic)
 echo "${BOLD}${MAGENTA}Creating firewall rule to allow HTTP traffic${RESET}"
-gcloud compute firewall-rules create allow-http --network=default --allow=tcp:80 --target-tags=http-server
+gcloud compute firewall-rules create allow-http --network=default --allow=tcp:80 --target-tags=http-server --quiet || echo "Firewall rule 'allow-http' already exists"
 
 echo
 
